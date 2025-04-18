@@ -117,7 +117,6 @@ class ForegroundService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(message)
-            .setSmallIcon(R.drawable.icon)
             .setContentIntent(pendingIntent)
             .build()
 
