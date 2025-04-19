@@ -1,5 +1,4 @@
 package com.isvisoft.flutter_screen_recording
-
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -69,7 +68,6 @@ class ForegroundService : Service() {
 
                 println("-------------------------- onStartCommand")
 
-                // Verificar permisos en Android 14 (SDK 34)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     if (ContextCompat.checkSelfPermission(
                             this,
@@ -79,18 +77,15 @@ class ForegroundService : Service() {
                     ) {
                         println("MediaProjection permission not granted, requesting permission")
 
-                        // Solicitar el permiso si no ha sido concedido
                         ActivityCompat.requestPermissions(
                             this as Activity,
                             arrayOf(Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION),
                             REQUEST_CODE_MEDIA_PROJECTION
                         )
                     } else {
-                        // Si ya está concedido, continuar normalmente
                         startForegroundServiceWithNotification(intent)
                     }
                 } else {
-                    // Si no es Android 14, continuar normalmente
                     startForegroundServiceWithNotification(intent)
                 }
 
