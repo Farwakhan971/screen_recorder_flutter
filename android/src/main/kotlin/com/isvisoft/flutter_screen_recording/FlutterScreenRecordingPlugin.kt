@@ -3,11 +3,9 @@ package com.isvisoft.flutter_screen_recording
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ComponentName
-import android.content.Intent
 import android.content.ServiceConnection
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
-import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
@@ -23,6 +21,10 @@ import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry
 import java.io.IOException
+import android.content.Intent
+import android.media.MediaRecorder
+import android.net.Uri
+import java.io.File
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -213,52 +215,77 @@ class FlutterScreenRecordingPlugin :
         println("$mDisplayWidth x $mDisplayHeight")
     }
 
-    private fun startRecordScreen() {
-        try {
+     
+    private var videoCounter = 1  
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                mMediaRecorder = MediaRecorder(pluginBinding!!.applicationContext)
-            } else {
-                @Suppress("DEPRECATION")
-                mMediaRecorder = MediaRecorder()
-            }
-
-            try {
-                mFileName = if (Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED) {
-                    pluginBinding!!.applicationContext.externalCacheDir?.absolutePath
-                } else {
-                    pluginBinding!!.applicationContext.cacheDir?.absolutePath
-                }
-                mFileName += "/$videoName.mp4"
-            } catch (e: IOException) {
-                println("Error creating name")
-                return
-            }
-
-            mMediaRecorder?.setVideoSource(MediaRecorder.VideoSource.SURFACE)
-            if (recordAudio!!) {
-                mMediaRecorder?.setAudioSource(MediaRecorder.AudioSource.MIC);
-                mMediaRecorder?.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-                mMediaRecorder?.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-            } else {
-                mMediaRecorder?.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            }
-            mMediaRecorder?.setOutputFile(mFileName)
-            mMediaRecorder?.setVideoSize(mDisplayWidth, mDisplayHeight)
-            mMediaRecorder?.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-            mMediaRecorder?.setVideoEncodingBitRate(5 * mDisplayWidth * mDisplayHeight)
-            mMediaRecorder?.setVideoFrameRate(30)
-
-            mMediaRecorder?.prepare()
-            mMediaRecorder?.start()
-
-        } catch (e: Exception) {
-            Log.d("--INIT-RECORDER", e.message + "")
-            println("Error startRecordScreen")
-            println(e.message)
+private fun startRecordScreen() {
+    try {
+        mMediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(pluginBinding!!.applicationContext)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
         }
 
+        val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+        if (!moviesDir.exists()) {
+            moviesDir.mkdirs()
+        }
+
+        mFileName = generateUniqueFileName(moviesDir)
+        
+        mMediaRecorder?.apply {
+            setVideoSource(MediaRecorder.VideoSource.SURFACE)
+            if (recordAudio == true) {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            } else {
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            }
+            setOutputFile(mFileName)
+            setVideoSize(mDisplayWidth, mDisplayHeight)
+            setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+            setVideoEncodingBitRate(5 * mDisplayWidth * mDisplayHeight)
+            setVideoFrameRate(30)
+            
+            prepare()
+            start()
+        }
+
+        mFileName?.let { notifyGallery(it) }
+
+    } catch (e: Exception) {
+        Log.e("SCREEN_REC", "Recording failed", e)
     }
+}
+
+private fun generateUniqueFileName(directory: File): String {
+    var fileName: String
+    var file: File
+    var counter = videoCounter
+    
+    do {
+        fileName = "${directory.absolutePath}/${videoName}_${counter}.mp4"
+        file = File(fileName)
+        counter++
+    } while (file.exists())
+    
+    videoCounter = counter  
+    return fileName
+}
+
+private fun notifyGallery(filePath: String) {
+    try {
+        val file = File(filePath)
+        val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
+            data = Uri.fromFile(file)
+        }
+        pluginBinding?.applicationContext?.sendBroadcast(mediaScanIntent)
+    } catch (e: Exception) {
+        Log.e("GALLERY", "Failed to update gallery", e)
+    }
+}
 
     private fun stopRecordScreen() {
         try {
