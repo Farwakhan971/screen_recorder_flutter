@@ -54,7 +54,7 @@ class FlutterScreenRecordingPlugin :
     private var mFileName: String? = ""
     private var mTitle = "Your screen is being recorded"
     private var mMessage = "Your screen is being recorded"
-    private var recordAudio: Boolean? = false
+    private var recordAudio: Boolean? = false;
     private val SCREEN_RECORD_REQUEST_CODE = 333
 
     private lateinit var _result: Result
@@ -63,21 +63,43 @@ class FlutterScreenRecordingPlugin :
     private var activityBinding: ActivityPluginBinding? = null
 
     private var serviceConnection: ServiceConnection? = null
-    
-    // Permission caching variables
-    private var cachedResultCode: Int? = null
-    private var cachedData: Intent? = null
-    private var isRecordingActive = false
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
+
         val context = pluginBinding!!.applicationContext
         
         if (requestCode == SCREEN_RECORD_REQUEST_CODE) {
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                // Cache the permission grant
-                cachedResultCode = resultCode
-                cachedData = data
-                startRecordingWithPermission(resultCode, data)
+            if (resultCode == Activity.RESULT_OK) {
+
+                ForegroundService.startService(context, mTitle, mMessage)
+                val intentConnection = Intent(context, ForegroundService::class.java)
+
+                serviceConnection = object : ServiceConnection {
+
+                    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+
+                        try {
+                            startRecordScreen()
+                            mMediaProjectionCallback = MediaProjectionCallback()
+                            mMediaProjection = mProjectionManager.getMediaProjection(resultCode, data!!)
+                            mMediaProjection?.registerCallback(mMediaProjectionCallback!!, null)
+                            mVirtualDisplay = createVirtualDisplay()
+                            _result.success(true)
+
+                        } catch (e: Throwable) {
+                            e.message?.let {
+                                Log.e("ScreenRecordingPlugin", it)
+                            }
+                            _result.success(false)
+                        }
+                    }
+
+                    override fun onServiceDisconnected(name: ComponentName?) {
+                    }
+                }
+
+                context.bindService(intentConnection, serviceConnection!!, Activity.BIND_AUTO_CREATE)
+
             } else {
                 ForegroundService.stopService(context)
                 _result.success(false)
@@ -87,47 +109,27 @@ class FlutterScreenRecordingPlugin :
         return false
     }
 
-    private fun startRecordingWithPermission(resultCode: Int, data: Intent) {
-        val context = pluginBinding!!.applicationContext
-        ForegroundService.startService(context, mTitle, mMessage)
-        val intentConnection = Intent(context, ForegroundService::class.java)
-
-        serviceConnection = object : ServiceConnection {
-            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-                try {
-                    startRecordScreen()
-                    mMediaProjectionCallback = MediaProjectionCallback()
-                    mMediaProjection = mProjectionManager.getMediaProjection(resultCode, data)
-                    mMediaProjection?.registerCallback(mMediaProjectionCallback!!, null)
-                    mVirtualDisplay = createVirtualDisplay()
-                    isRecordingActive = true
-                    _result.success(true)
-                } catch (e: Throwable) {
-                    Log.e("ScreenRecordingPlugin", e.message ?: "Unknown error")
-                    _result.success(false)
-                }
-            }
-
-            override fun onServiceDisconnected(name: ComponentName?) {}
-        }
-
-        context.bindService(intentConnection, serviceConnection!!, Activity.BIND_AUTO_CREATE)
-    }
-
     override fun onMethodCall(call: MethodCall, result: Result) {
         val appContext = pluginBinding!!.applicationContext
 
         when (call.method) {
             "startRecordScreen" -> {
+
                 try {
                     _result = result
                     val title = call.argument<String?>("title")
                     val message = call.argument<String?>("message")
 
-                    if (!title.isNullOrEmpty()) mTitle = title
-                    if (!message.isNullOrEmpty()) mMessage = message
+                    if (!title.isNullOrEmpty()) {
+                        mTitle = title
+                    }
+
+                    if (!message.isNullOrEmpty()) {
+                        mMessage = message
+                    }
 
                     val metrics = DisplayMetrics()
+
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                         val display = activityBinding!!.activity.display
                         display?.getRealMetrics(metrics)
@@ -141,13 +143,6 @@ class FlutterScreenRecordingPlugin :
                     videoName = call.argument<String?>("name")
                     recordAudio = call.argument<Boolean?>("audio")
 
-                    // Check if we already have permission and not currently recording
-                    if (cachedResultCode != null && cachedData != null && !isRecordingActive) {
-                        startRecordingWithPermission(cachedResultCode!!, cachedData!!)
-                        return
-                    }
-
-                    // Otherwise request new permission
                     val permissionIntent = mProjectionManager.createScreenCaptureIntent()
                     ActivityCompat.startActivityForResult(
                         activityBinding!!.activity,
@@ -157,7 +152,8 @@ class FlutterScreenRecordingPlugin :
                     )
 
                 } catch (e: Exception) {
-                    Log.e("ScreenRecording", "Error starting recording", e)
+                    println("Error onMethodCall startRecordScreen")
+                    println(e.message)
                     result.success(false)
                 }
             }
@@ -166,8 +162,7 @@ class FlutterScreenRecordingPlugin :
                     serviceConnection?.let {
                         appContext.unbindService(it)
                     }
-                    ForegroundService.stopService(appContext)
-                    isRecordingActive = false
+                    ForegroundService.stopService(pluginBinding!!.applicationContext)
                     if (mMediaRecorder != null) {
                         stopRecordScreen()
                         result.success(mFileName)
@@ -185,107 +180,128 @@ class FlutterScreenRecordingPlugin :
     }
 
     private fun calculateResolution(metrics: DisplayMetrics) {
+
         mDisplayHeight = metrics.heightPixels
         mDisplayWidth = metrics.widthPixels
 
-        var maxRes = 1280.0
+        var maxRes = 1280.0;
         if (metrics.scaledDensity >= 3.0f) {
-            maxRes = 1920.0
+            maxRes = 1920.0;
         }
-        
         if (metrics.widthPixels > metrics.heightPixels) {
             var rate = metrics.widthPixels / maxRes
-            if (rate > 1.5) rate = 1.5
+
+            if (rate > 1.5) {
+                rate = 1.5
+            }
             mDisplayWidth = maxRes.toInt()
             mDisplayHeight = (metrics.heightPixels / rate).toInt()
+            println("Rate : $rate")
         } else {
             var rate = metrics.heightPixels / maxRes
-            if (rate > 1.5) rate = 1.5
+            if (rate > 1.5) {
+                rate = 1.5
+            }
             mDisplayHeight = maxRes.toInt()
             mDisplayWidth = (metrics.widthPixels / rate).toInt()
+            println("Rate : $rate")
         }
 
-        Log.d("ScreenResolution", "Original: ${metrics.widthPixels}x${metrics.heightPixels}")
-        Log.d("ScreenResolution", "Calculated: ${mDisplayWidth}x${mDisplayHeight}")
+        println("Scaled Density")
+        println(metrics.scaledDensity)
+        println("Original Resolution ")
+        println(metrics.widthPixels.toString() + " x " + metrics.heightPixels)
+        println("Calcule Resolution ")
+        println("$mDisplayWidth x $mDisplayHeight")
     }
 
+     
     private var videoCounter = 1  
 
-    private fun startRecordScreen() {
-        try {
-            mMediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                MediaRecorder(pluginBinding!!.applicationContext)
+private fun startRecordScreen() {
+    try {
+        // Initialize MediaRecorder
+        mMediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(pluginBinding!!.applicationContext)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
+        }
+
+        // Create output directory
+        val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+        if (!moviesDir.exists()) {
+            moviesDir.mkdirs()
+        }
+
+        // Generate unique filename
+        mFileName = generateUniqueFileName(moviesDir)
+        
+        mMediaRecorder?.apply {
+            setVideoSource(MediaRecorder.VideoSource.SURFACE)
+            if (recordAudio == true) {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             } else {
-                @Suppress("DEPRECATION")
-                MediaRecorder()
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             }
-
-            val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-            if (!moviesDir.exists()) {
-                moviesDir.mkdirs()
-            }
-
-            mFileName = generateUniqueFileName(moviesDir)
+            setOutputFile(mFileName)
+            setVideoSize(mDisplayWidth, mDisplayHeight)
+            setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+            setVideoEncodingBitRate(5 * mDisplayWidth * mDisplayHeight)
+            setVideoFrameRate(30)
             
-            mMediaRecorder?.apply {
-                setVideoSource(MediaRecorder.VideoSource.SURFACE)
-                if (recordAudio == true) {
-                    setAudioSource(MediaRecorder.AudioSource.MIC)
-                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                } else {
-                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                }
-                setOutputFile(mFileName)
-                setVideoSize(mDisplayWidth, mDisplayHeight)
-                setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-                setVideoEncodingBitRate(5 * mDisplayWidth * mDisplayHeight)
-                setVideoFrameRate(30)
-                
-                prepare()
-                start()
-            }
-
-            mFileName?.let { notifyGallery(it) }
-
-        } catch (e: Exception) {
-            Log.e("ScreenRecording", "Recording setup failed", e)
+            prepare()
+            start()
         }
-    }
 
-    private fun generateUniqueFileName(directory: File): String {
-        var fileName: String
-        var file: File
-        var counter = videoCounter
-        
-        do {
-            fileName = "${directory.absolutePath}/${videoName}_${counter}.mp4"
-            file = File(fileName)
-            counter++
-        } while (file.exists())
-        
-        videoCounter = counter  
-        return fileName
-    }
+        mFileName?.let { notifyGallery(it) }
 
-    private fun notifyGallery(filePath: String) {
-        try {
-            val file = File(filePath)
-            val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
-                data = Uri.fromFile(file)
-            }
-            pluginBinding?.applicationContext?.sendBroadcast(mediaScanIntent)
-        } catch (e: Exception) {
-            Log.e("GalleryUpdate", "Failed to update gallery", e)
+    } catch (e: Exception) {
+        Log.e("SCREEN_REC", "Recording failed", e)
+    }
+}
+
+private fun generateUniqueFileName(directory: File): String {
+    var fileName: String
+    var file: File
+    var counter = videoCounter
+    
+    do {
+        fileName = "${directory.absolutePath}/${videoName}_${counter}.mp4"
+        file = File(fileName)
+        counter++
+    } while (file.exists())
+    
+    videoCounter = counter  
+    return fileName
+}
+
+private fun notifyGallery(filePath: String) {
+    try {
+        val file = File(filePath)
+        val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
+            data = Uri.fromFile(file)
         }
+        pluginBinding?.applicationContext?.sendBroadcast(mediaScanIntent)
+    } catch (e: Exception) {
+        Log.e("GALLERY", "Failed to update gallery", e)
     }
+}
 
     private fun stopRecordScreen() {
         try {
+            println("stopRecordScreen")
             mMediaRecorder?.stop()
             mMediaRecorder?.reset()
+            println("stopRecordScreen success")
+
         } catch (e: Exception) {
-            Log.e("ScreenRecording", "Error stopping recording", e)
+            Log.d("--INIT-RECORDER", e.message + "")
+            println("stopRecordScreen error")
+            println(e.message)
+
         } finally {
             stopScreenSharing()
         }
@@ -298,7 +314,8 @@ class FlutterScreenRecordingPlugin :
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, mMediaRecorder?.surface, null, null
             )
         } catch (e: Exception) {
-            Log.e("VirtualDisplay", "Creation failed", e)
+            println("createVirtualDisplay err")
+            println(e.message)
             return null
         }
     }
@@ -311,43 +328,36 @@ class FlutterScreenRecordingPlugin :
                 mMediaProjection?.stop()
                 mMediaProjection = null
             }
-            Log.d("ScreenSharing", "Stopped screen sharing")
+            Log.d("TAG", "MediaProjection Stopped")
         }
     }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        pluginBinding = binding
+        pluginBinding = binding;
     }
 
-    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        pluginBinding = null
-    }
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {}
 
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
-        activityBinding = binding
+        activityBinding = binding;
         val channel = MethodChannel(pluginBinding!!.binaryMessenger, "flutter_screen_recording")
         channel.setMethodCallHandler(this)
         activityBinding!!.addActivityResultListener(this)
     }
 
-    override fun onDetachedFromActivityForConfigChanges() {
-        activityBinding = null
-    }
+    override fun onDetachedFromActivityForConfigChanges() {}
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
-        activityBinding = binding
+        activityBinding = binding;
     }
 
-    override fun onDetachedFromActivity() {
-        activityBinding = null
-    }
+    override fun onDetachedFromActivity() {}
 
     inner class MediaProjectionCallback : MediaProjection.Callback() {
         override fun onStop() {
             mMediaRecorder?.reset()
             mMediaProjection = null
             stopScreenSharing()
-            isRecordingActive = false
         }
     }
 }
