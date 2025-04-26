@@ -320,16 +320,18 @@ private fun notifyGallery(filePath: String) {
     }
 
     private fun stopScreenSharing() {
-        if (mVirtualDisplay != null) {
-            mVirtualDisplay?.release()
-            if (mMediaProjection != null && mMediaProjectionCallback != null) {
-                mMediaProjection?.unregisterCallback(mMediaProjectionCallback!!)
-                mMediaProjection?.stop()
-                mMediaProjection = null
-            }
-            Log.d("TAG", "MediaProjection Stopped")
+    if (mVirtualDisplay != null) {
+        mVirtualDisplay?.release()
+        val callback = mMediaProjectionCallback
+        val projection = mMediaProjection
+        if (projection != null && callback != null) {
+            projection.unregisterCallback(callback)
+            projection.stop()
+            mMediaProjection = null
         }
+        Log.d("TAG", "MediaProjection Stopped")
     }
+}
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         pluginBinding = binding;
