@@ -100,7 +100,9 @@ class FlutterScreenRecordingPlugin :
                             startRecordScreen()
                             mMediaProjectionCallback = MediaProjectionCallback()
                             mMediaProjection = mProjectionManager.getMediaProjection(resultCode, data!!)
-                            mMediaProjection?.registerCallback(mMediaProjectionCallback, null)
+                            mMediaProjectionCallback?.let { callback ->
+                            mMediaProjection?.registerCallback(callback, null)
+                            }
                             mVirtualDisplay = createVirtualDisplay()
                             _result.success(true)
                         } catch (e: Throwable) {
