@@ -214,80 +214,70 @@ class FlutterScreenRecordingPlugin :
         println("$mDisplayWidth x $mDisplayHeight")
     }
 
-     
     private var videoCounter = 1  
 
-private fun startRecordScreen() {
-    try {
-        // Initialize MediaRecorder
-        mMediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            MediaRecorder(pluginBinding!!.applicationContext)
-        } else {
-            @Suppress("DEPRECATION")
-            MediaRecorder()
-        }
-
-        // Create output directory
-        val moviesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-        if (!moviesDir.exists()) {
-            moviesDir.mkdirs()
-        }
-
-        // Generate unique filename
-        mFileName = generateUniqueFileName(moviesDir)
-        
-        mMediaRecorder?.apply {
-            setVideoSource(MediaRecorder.VideoSource.SURFACE)
-            if (recordAudio == true) {
-                setAudioSource(MediaRecorder.AudioSource.MIC)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+    private fun startRecordScreen() {
+        try {
+            // Initialize MediaRecorder
+            mMediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(pluginBinding!!.applicationContext)
             } else {
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                @Suppress("DEPRECATION")
+                MediaRecorder()
             }
-            setOutputFile(mFileName)
-            setVideoSize(mDisplayWidth, mDisplayHeight)
-            setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-            setVideoEncodingBitRate(5 * mDisplayWidth * mDisplayHeight)
-            setVideoFrameRate(30)
+
+            // Create output directory in DCIM/Camera
+            val dcimDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
+            val cameraDir = File(dcimDir, "Camera")
+            if (!cameraDir.exists()) {
+                cameraDir.mkdirs()
+            }
+
+            // Generate unique filename
+            mFileName = generateUniqueFileName(cameraDir)
             
-            prepare()
-            start()
+            mMediaRecorder?.apply {
+                setVideoSource(MediaRecorder.VideoSource.SURFACE)
+                if (recordAudio == true) {
+                    setAudioSource(MediaRecorder.AudioSource.MIC)
+                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                } else {
+                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                }
+                setOutputFile(mFileName)
+                setVideoSize(mDisplayWidth, mDisplayHeight)
+                setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+                setVideoEncodingBitRate(5 * mDisplayWidth * mDisplayHeight)
+                setVideoFrameRate(30)
+                
+                prepare()
+                start()
+            }
+
+        } catch (e: Exception) {
+            Log.e("SCREEN_REC", "Recording failed", e)
         }
-
-        mFileName?.let { notifyGallery(it) }
-
-    } catch (e: Exception) {
-        Log.e("SCREEN_REC", "Recording failed", e)
     }
-}
 
-private fun generateUniqueFileName(directory: File): String {
-    var fileName: String
-    var file: File
-    var counter = videoCounter
-    
-    do {
-        fileName = "${directory.absolutePath}/${videoName}_${counter}.mp4"
-        file = File(fileName)
-        counter++
-    } while (file.exists())
-    
-    videoCounter = counter  
-    return fileName
-}
-
-private fun notifyGallery(filePath: String) {
-    try {
-        val file = File(filePath)
-        val mediaScanIntent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
-            data = Uri.fromFile(file)
-        }
-        pluginBinding?.applicationContext?.sendBroadcast(mediaScanIntent)
-    } catch (e: Exception) {
-        Log.e("GALLERY", "Failed to update gallery", e)
+    private fun generateUniqueFileName(directory: File): String {
+        var fileName: String
+        var file: File
+        var counter = videoCounter
+        
+        do {
+            fileName = if (videoName.isNullOrEmpty()) {
+                "${directory.absolutePath}/screen_recording_${counter}.mp4"
+            } else {
+                "${directory.absolutePath}/${videoName}_${counter}.mp4"
+            }
+            file = File(fileName)
+            counter++
+        } while (file.exists())
+        
+        videoCounter = counter  
+        return fileName
     }
-}
 
     private fun stopRecordScreen() {
         try {
@@ -320,18 +310,18 @@ private fun notifyGallery(filePath: String) {
     }
 
     private fun stopScreenSharing() {
-    if (mVirtualDisplay != null) {
-        mVirtualDisplay?.release()
-        val callback = mMediaProjectionCallback
-        val projection = mMediaProjection
-        if (projection != null && callback != null) {
-            projection.unregisterCallback(callback)
-            projection.stop()
-            mMediaProjection = null
+        if (mVirtualDisplay != null) {
+            mVirtualDisplay?.release()
+            val callback = mMediaProjectionCallback
+            val projection = mMediaProjection
+            if (projection != null && callback != null) {
+                projection.unregisterCallback(callback)
+                projection.stop()
+                mMediaProjection = null
+            }
+            Log.d("TAG", "MediaProjection Stopped")
         }
-        Log.d("TAG", "MediaProjection Stopped")
     }
-}
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         pluginBinding = binding;
